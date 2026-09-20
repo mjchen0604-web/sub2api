@@ -2,7 +2,7 @@
 import {readFileSync,statSync} from 'node:fs';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {runNative,credentialAccount,closeSessions} from './native.mjs';
-import {convertResponsesMessages} from '@earendil-works/pi-ai/api/openai-responses-shared';
+import {replayItems} from './replay.mjs';
 import {modelAcceptance} from '../../tools/pi-integration/acceptance.mjs';
 const file=process.env.PI_AUTH_FILE;
 if(!file||(statSync(file).mode&0o077))throw Error('PI_AUTH_FILE must be a private OAuth file');
@@ -28,7 +28,7 @@ async function run(turn,request){
  let response;const output=[];
  for(const frame of frames){try{const value=JSON.parse(frame.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n'));if(value.type==='response.output_item.done'&&value.item)output.push(value.item);if(value.type==='response.completed')response=value.response}catch{}}
  if(!response)throw Error('terminal_response_missing');
- return {...response,replayItems:convertResponsesMessages({id:model,provider:'openai-codex',api:'openai-codex-responses'},{messages:[result.result]},new Set(['openai','openai-codex','opencode']),{includeSystemPrompt:false}),output:response.output?.length?response.output:output};
+ return {...response,replayItems:replayItems(result.result,model),output:response.output?.length?response.output:output};
 }
 try{
  const first=await run(1,{model,input,tools:[tool],tool_choice:'auto',reasoning:{effort:'low'}});

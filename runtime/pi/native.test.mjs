@@ -79,3 +79,11 @@ test('cached request input is isolated from caller mutations',()=>{
  original.input.push({role:'user',content:'mutated'});
  assert.equal(body.input.length,1);
 });
+
+
+test('live replay excludes synthetic missing tool results and retains native call IDs',async()=>{
+ const {replayItems}=await import('./replay.mjs');
+ const items=replayItems({role:'assistant',model:'gpt-6-astra',provider:'openai-codex',api:'openai-codex-responses',stopReason:'toolUse',timestamp:0,
+ content:[{type:'toolCall',id:'call_fixture|fc_fixture',name:'integration_echo',arguments:{value:'PI_NATIVE_OK'}}]},'gpt-6-astra');
+ assert.equal(items.length,1);assert.equal(items[0].type,'function_call');assert.equal(items[0].call_id,'call_fixture');
+});
