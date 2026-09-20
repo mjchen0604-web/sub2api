@@ -33,3 +33,19 @@ Local verification on 2026-09-20:
 - Frontend key-dialog and locale tests: 25 passed; TypeScript and production Vite build passed.
 
 Scope: this verifies the existing HTTP Responses path, not Pi WebSocket continuation, all model entitlements, long-duration refresh behavior, or complete feature parity with every proposal in the source discussion. Frontend compilation is separate from updating the running server binary.
+
+## Deployment and GPT-6 acceptance (2026-09-20)
+
+The existing `sub2api` service was updated in place to local build `0.2.6-pi.1`, source commit `aae631525`, image `local/sub2api:pi-aae631525`. Health passed with zero restarts. The served KeysView asset matched the production build and contained the Pi config. Existing PostgreSQL/Redis services, ports, account and groups were retained. No migrations differed from the previous local source reference.
+
+GPT-6 acceptance did **not** pass:
+
+| Path | Requested model | Model declared in response | Result |
+| --- | --- | --- | --- |
+| Pi SDK -> existing Sub2API | gpt-6 | gpt-5.6-luna | HTTP 200/toolUse, model assertion failed |
+| Pi SDK -> existing Sub2API | gpt-6-astra | gpt-5.6-luna | HTTP 200/toolUse, model assertion failed |
+| Local auth -> official Codex endpoint directly | gpt-6-astra | gpt-5.6-luna | HTTP 200/response.completed, wrong model family |
+
+Account mappings preserved GPT-6 names, and group model routing was empty. The direct request reproduces the mismatch without Sub2API. This is evidence of the upstream response under this authentication, not proof of its underlying cause or of the model's internal implementation. The runner now defaults to `gpt-6-astra`, observes response-body model declarations, and fails GPT-6 requests unless all observed models belong to the expected family. `SUB2API_EXPECT_MODELS` can explicitly set a comma-separated expectation for other acceptance runs.
+
+Deployment rollback uses the retained image `local/sub2api:before-pi-20260920`. The existing deployment's `docker-compose.override.yml` selects the new image; change its image to the retained one and run `docker compose up -d --no-deps --pull never sub2api` from the existing deployment directory. Database and configuration backups were saved locally before deployment. Do not overwrite the database just to roll back the executable.
