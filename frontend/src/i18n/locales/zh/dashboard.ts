@@ -156,6 +156,7 @@ export default {
     lastUsedIP: '最近使用 IP',
     useKey: '使用密钥',
     useKeyModal: {
+      pi: { description: '在 Pi 中使用当前密钥，通过 Responses 接口访问本组模型。保存配置后，在 Pi 的 /model 中选择 sub2api 下的模型。', mergeHint: '将 sub2api 合并到现有 providers 中，保留其他服务。模型 ID 须与当前分组可用模型一致；此文件包含密钥，请仅保存在自己的设备上。Windows 路径为 %USERPROFILE%\\.pi\\agent\\models.json。' },
       title: '使用 API 密钥',
       description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
       copy: '复制',

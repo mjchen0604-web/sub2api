@@ -156,6 +156,7 @@ export default {
     lastUsedIP: 'Last Used IP',
     useKey: 'Use Key',
     useKeyModal: {
+      pi: { description: 'Use this key in Pi with the Responses API. Save the configuration, then select a model under sub2api in Pi /model.', mergeHint: 'Merge sub2api into your existing providers and retain other providers. Use a model ID available to this group. This file contains your key; keep it on your own device. Windows path: %USERPROFILE%\\.pi\\agent\\models.json.' },
       title: 'Use API Key',
       description:
         'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',

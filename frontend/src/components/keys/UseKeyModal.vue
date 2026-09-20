@@ -441,6 +441,7 @@ const clientTabs = computed((): TabConfig[] => {
       const tabs: TabConfig[] = [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon },
+        { id: 'pi', label: 'Pi', icon: TerminalIcon },
       ]
       if (props.allowMessagesDispatch) {
         tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
@@ -498,7 +499,7 @@ const openaiTabs: TabConfig[] = [
   { id: 'windows', label: 'Windows', icon: WindowsIcon }
 ]
 
-const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
+const showShellTabs = computed(() => activeClientTab.value !== 'opencode' && activeClientTab.value !== 'pi')
 
 const showCodexAuthMode = computed(() =>
   props.platform === 'openai' &&
@@ -514,6 +515,7 @@ const currentTabs = computed(() => {
 })
 
 const platformDescription = computed(() => {
+  if (activeClientTab.value === 'pi') return t('keys.useKeyModal.pi.description')
   if (activeClientTab.value === 'codex' &&
     props.platform !== 'openai' &&
     props.platform !== 'grok' &&
@@ -614,7 +616,7 @@ const platformNote = computed(() => {
   }
 })
 
-const showPlatformNote = computed(() => activeClientTab.value !== 'opencode')
+const showPlatformNote = computed(() => activeClientTab.value !== 'opencode' && activeClientTab.value !== 'pi')
 
 function resetCodexModelManifest() {
   codexModelManifestController?.abort()
@@ -712,6 +714,21 @@ const currentFiles = computed((): FileConfig[] => {
     const trimmed = baseRoot.replace(/\/+$/, '')
     return trimmed.endsWith('/v1beta') ? trimmed : `${trimmed}/v1beta`
   })()
+
+  if (activeClientTab.value === 'pi') {
+    // Pi v0.85.1 models.json: dollar and command prefixes have special meaning.
+    const literalKey = apiKey.split('$').join('$$').replace(/^!/, '$!')
+    return [{
+      path: '~/.pi/agent/models.json',
+      content: JSON.stringify({ providers: { sub2api: {
+        baseUrl: apiBase,
+        api: 'openai-responses',
+        apiKey: literalKey,
+        models: [{ id: selectCodexCatalogModel('gpt-5.5'), reasoning: true, input: ['text', 'image'] }]
+      } } }, null, 2),
+      hint: t('keys.useKeyModal.pi.mergeHint')
+    }]
+  }
 
   if (activeClientTab.value === 'opencode') {
     switch (props.platform) {

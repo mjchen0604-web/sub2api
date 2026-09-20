@@ -1,0 +1,7 @@
+{
+  "name": "sub2api-pi-integration",
+  "private": true,
+  "type": "module",
+  "scripts": {"verify": "node verify.mjs"},
+  "dependencies": {"@earendil-works/pi-ai": "0.85.1"}
+}

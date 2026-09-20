@@ -40,6 +40,22 @@ describe('UseKeyModal', () => {
     saveAsMock.mockClear()
   })
 
+  it('exports Pi Responses config inside the existing OpenAI key dialog', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKey: 'sk-pi-test', baseUrl: 'https://example.com/v1/', platform: 'openai' },
+      global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: { template: '<span />' } } }
+    })
+    await wrapper.findAll('button').find(button => button.text().trim() === 'Pi')!.trigger('click')
+    const blocks = wrapper.findAll('pre code')
+    expect(blocks).toHaveLength(1)
+    const config = JSON.parse(blocks[0].text())
+    expect(config.providers.sub2api).toMatchObject({baseUrl: 'https://example.com/v1', api: 'openai-responses', apiKey: 'sk-pi-test'})
+    expect(config.providers.sub2api.models[0].id).toBe('gpt-5.5')
+    expect(wrapper.text()).toContain('~/.pi/agent/models.json')
+    expect(wrapper.text()).toContain('keys.useKeyModal.pi.mergeHint')
+    expect(wrapper.find('[data-testid="codex-auth-mode-legacy"]').exists()).toBe(false)
+  })
+
   it('omits the attribution override from every standard Claude Code setup form', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
