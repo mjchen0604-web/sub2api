@@ -4,7 +4,8 @@ import { readFileSync, statSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { stream } from '@earendil-works/pi-ai/api/openai-responses';
-import { modelAcceptance, requestEvidence, observeSSELine } from './acceptance.mjs';
+import { modelAcceptance, requestEvidence } from './acceptance.mjs';
+import { observeResponse } from './response-observer.mjs';
 
 const keyFile = process.env.SUB2API_KEY_FILE;
 if (!keyFile || (statSync(keyFile).mode & 0o077)) throw Error('Set SUB2API_KEY_FILE to a private key file');
@@ -22,33 +23,30 @@ let requests=0;
 const modelChecks=[];
 async function run(extra={}) {
  const counts={}; let httpStatus=0; let requestedModel; let ingress;
- const observedModels=new Set();
- const terminals=new Set();
- let observation=Promise.resolve();
+ let observed;
+ let resolveObservation;
+ const observation=new Promise(resolve=>{resolveObservation=resolve});
  const observeFetch=async (input,init)=>{
   ingress=requestEvidence(init?.headers, JSON.parse(init.body));
-  const response=await fetch(input,init);
-  if(response.ok && response.headers.get('content-type')?.includes('text/event-stream')) {
-   observation=response.clone().text().then(wire=>{
-    for(const line of wire.split('\n')) {
-     observeSSELine(line,observedModels,terminals);
-    }
-   });
-  }
-  return response;
+  let response;
+  try { response=await fetch(input,init); } catch(error) { resolveObservation(); throw error; }
+  return observeResponse(response,result=>{observed=result;resolveObservation()});
  };
  const response=stream(model,context,{apiKey,sessionId,maxRetries:0,timeoutMs:90000,signal:AbortSignal.timeout(95000),reasoningEffort:'low',
  fetch:observeFetch,onPayload:body=>{requestedModel=body.model},onResponse:r=>{httpStatus=r.status},...extra}); requests++;
  for await(const event of response) counts[event.type]=(counts[event.type]||0)+1;
  const result=await response.result();
+ if (['error','aborted'].includes(result.stopReason) && !observed) throw Error('Pi request did not complete');
  await observation;
  // Do not log provider errors or message contents: errors can echo request data.
- const acceptance=modelAcceptance(observedModels,model.id,process.env.SUB2API_EXPECT_MODELS);
+ const acceptance=modelAcceptance(new Set(observed.observedModels),model.id,process.env.SUB2API_EXPECT_MODELS);
  modelChecks.push(acceptance);
- console.log(JSON.stringify({request:requests,httpStatus,requestedModel,stopReason:result.stopReason,events:counts,ingress,modelAcceptance:acceptance}));
+ console.log(JSON.stringify({request:requests,httpStatus,requestedModel,stopReason:result.stopReason,events:counts,ingress,observation:observed,modelAcceptance:acceptance}));
  assert.equal(httpStatus,200,'Expected HTTP 200');
  assert.equal(requestedModel,model.id,'Requested model was changed before sending');
- assert.deepEqual([...terminals],['response.completed'],'Expected successful SSE terminal event');
+ assert.equal(observed.terminal_status,'completed','Expected a complete SSE terminal frame');
+ assert.equal(observed.stream_interrupted,false,'Stream was interrupted');
+ assert.equal(observed.modelOverflow,false,'Too many model declarations');
  assert.ok(!['error','aborted','pending','length'].includes(result.stopReason),'Pi did not complete successfully');
  return result;
 }

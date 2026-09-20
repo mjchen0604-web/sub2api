@@ -3536,6 +3536,18 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
+      <div v-if="form.platform === 'openai'" class="space-y-3">
+        <label class="block text-sm font-medium">{{ t('admin.accounts.piNativeHarness') }}</label>
+        <select v-model="openaiOAuth.harnessKind.value" class="input w-full" :disabled="!!currentSessionId || currentOAuthLoading">
+          <option value="">{{ t('admin.accounts.piNativeDefault') }}</option>
+          <option value="pi">{{ t('admin.accounts.piNativeOption') }}</option>
+        </select>
+        <template v-if="openaiOAuth.harnessKind.value === 'pi'">
+          <label class="block text-sm font-medium">{{ t('admin.accounts.piNativeOwner') }}</label>
+          <input v-model.number="openaiOAuth.piOwnerUserId.value" type="number" min="1" step="1" class="input w-full" :disabled="!!currentSessionId || currentOAuthLoading" />
+          <p class="text-sm text-gray-500">{{ t('admin.accounts.piNativeHelp') }}</p>
+        </template>
+      </div>
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
@@ -3547,13 +3559,13 @@
         :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
-        :show-mobile-refresh-token-option="form.platform === 'openai'"
+        :show-refresh-token-option="(form.platform === 'openai' && openaiOAuth.harnessKind.value !== 'pi') || form.platform === 'antigravity' || form.platform === 'grok'"
+        :show-mobile-refresh-token-option="form.platform === 'openai' && openaiOAuth.harnessKind.value !== 'pi'"
         :show-session-token-option="false"
         :show-access-token-option="false"
-        :show-codex-session-import-option="form.platform === 'openai'"
-        :show-agent-identity-option="form.platform === 'openai'"
-        :show-codex-pat-option="form.platform === 'openai'"
+        :show-codex-session-import-option="form.platform === 'openai' && openaiOAuth.harnessKind.value !== 'pi'"
+        :show-agent-identity-option="form.platform === 'openai' && openaiOAuth.harnessKind.value !== 'pi'"
+        :show-codex-pat-option="form.platform === 'openai' && openaiOAuth.harnessKind.value !== 'pi'"
         :show-sso-option="form.platform === 'grok'"
         :show-email-password-option="false"
         :show-manual-option="true"
@@ -5398,6 +5410,8 @@ const resetForm = () => {
   geminiTierGcp.value = 'gcp_standard'
   geminiTierAIStudio.value = 'aistudio_free'
   oauth.resetState()
+  openaiOAuth.harnessKind.value = ''
+  openaiOAuth.piOwnerUserId.value = undefined
   openaiOAuth.resetState()
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
@@ -5888,6 +5902,10 @@ const goBackToBasicInfo = () => {
 
 const handleGenerateUrl = async () => {
   if (form.platform === 'openai') {
+    if (openaiOAuth.harnessKind.value === 'pi' && (!Number.isSafeInteger(openaiOAuth.piOwnerUserId.value) || !openaiOAuth.piOwnerUserId.value || openaiOAuth.piOwnerUserId.value < 1 || form.proxy_id)) {
+      appStore.showError(t('admin.accounts.piNativeValidation'))
+      return
+    }
     await openaiOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'gemini') {
     await geminiOAuth.generateAuthUrl(

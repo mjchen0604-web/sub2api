@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync, zstdDecompressSync } from 'node:zlib';
 import { once } from 'node:events';
-import { modelAcceptance, requestEvidence, observeSSELine } from './acceptance.mjs';
+import { modelAcceptance, requestEvidence } from './acceptance.mjs';
+import { ResponseObserver } from './response-observer.mjs';
 
 const keyFile = process.env.SUB2API_KEY_FILE;
 if (!keyFile || (statSync(keyFile).mode & 0o077)) throw Error('Set SUB2API_KEY_FILE to a private key file');
@@ -25,6 +26,7 @@ const server = createServer(async (req, res) => {
   }
   const report = { request: reports.length + 1 };
   reports.push(report);
+  let observer;
   try {
     const chunks = [];
     let size = 0;
@@ -48,22 +50,17 @@ const server = createServer(async (req, res) => {
     });
     report.httpStatus = upstream.status;
     res.writeHead(upstream.status, {'content-type': upstream.headers.get('content-type') || 'application/octet-stream'});
-    const models = new Set(), terminals = new Set();
-    const decoder = new TextDecoder();
-    let pending = '';
+    observer = new ResponseObserver(upstream.headers.get('content-type') || '');
     for await (const chunk of upstream.body) {
-      res.write(chunk);
-      pending += decoder.decode(chunk, {stream: true});
-      const lines = pending.split('\n');
-      pending = lines.pop();
-      for (const line of lines) observeSSELine(line, models, terminals);
+      observer.feed(chunk);
+      if (!res.write(chunk)) await once(res, 'drain');
     }
-    observeSSELine(pending + decoder.decode(), models, terminals);
-    report.modelAcceptance = modelAcceptance(models, model, process.env.SUB2API_EXPECT_MODELS);
-    report.terminals = [...terminals];
+    report.observation = observer.finish();
+    report.modelAcceptance = modelAcceptance(new Set(report.observation.observedModels), model, process.env.SUB2API_EXPECT_MODELS);
     res.end();
   } catch {
     report.transportError = true;
+    if (observer) report.observation = observer.finish(true);
     if (!res.headersSent) res.writeHead(502);
     res.end();
   }
@@ -98,7 +95,7 @@ try {
   try { finalTextMatches = readFileSync(join(work, 'answer.txt'), 'utf8').trim() === 'CODEX_SUB2API_OK'; } catch {}
   const protocolPassed = code === 0 && finalTextMatches && reports.length > 0 && reports.every(r =>
     !r.transportError && r.requestedModelMatches && r.httpStatus === 200 && r.ingress?.stream && r.ingress?.inputPresent &&
-    r.terminals?.includes('response.completed') && !r.terminals.some(t => t !== 'response.completed'));
+    r.observation?.terminal_status === 'completed' && !r.observation.stream_interrupted && !r.observation.modelOverflow);
   const modelPassed = reports.length > 0 && reports.every(r => r.modelAcceptance?.passed);
   console.log(JSON.stringify({client: 'codex', requestedModel: model, protocolPassed, modelPassed, finalTextMatches, requests: reports}));
   if (!protocolPassed || !modelPassed) process.exitCode = 1;

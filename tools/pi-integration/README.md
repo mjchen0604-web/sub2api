@@ -72,3 +72,7 @@ The updated Pi runner was also exercised on 2026-09-20: two HTTP 200 responses, 
 Sub2API's existing `openai_codex_fingerprint.go` rewrites selected fields when its fingerprint mode is enabled and retains unspecified metadata fields. It does not globally remove turn metadata. No identity-rewrite behavior was added by this integration.
 
 `npm test --prefix tools/pi-integration` covers missing/mixed/wrong response models, secret-free evidence, malformed/embedded metadata, and SSE observations. It also executes the pinned native Pi adapter against an intercepted fetch with a synthetic token: default metadata is absent, explicitly supplied metadata survives, `originator=pi` and native body fields are generated. This fixture makes no network call and is not proof of live native Pi OAuth authorization.
+
+## Native runtime extension
+
+The standard API-key Pi configuration remains available. The newer **Native Pi** account authorization and gateway route are documented in [runtime/pi/README.md](../../runtime/pi/README.md). They use the pinned native Pi SDK for authorization, refresh and execution, with explicit owner binding and cached WebSocket continuation. The strict passive response observer is shared with this runner. Consult that document for current live acceptance; the older HTTP-only scope above describes the earlier deployment.

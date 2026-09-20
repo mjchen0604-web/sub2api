@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { modelAcceptance, requestEvidence, observeSSELine } from './acceptance.mjs';
+import { modelAcceptance, requestEvidence } from './acceptance.mjs';
 import { stream as streamCodex } from '@earendil-works/pi-ai/api/openai-codex-responses';
 import { zstdDecompressSync } from 'node:zlib';
 
@@ -17,24 +17,22 @@ test('request evidence reports field presence without leaking values', () => {
     {input: 'SECRET', stream: true, store: false, previous_response_id: 'SECRET'});
   assert.equal(JSON.stringify(evidence).includes('SECRET'), false);
   assert.equal(evidence.originator, 'other');
-  assert.deepEqual(evidence.turnMetadataIDsPresent, ['session_id']);
+  assert.deepEqual(evidence.headerMetadata.idsPresent, ['session_id']);
   assert.equal(evidence.previousResponseIDPresent, true);
 });
 
 test('embedded and malformed metadata are distinguished from absent metadata', () => {
-  assert.equal(requestEvidence({}, {}).turnMetadataPresent, false);
-  assert.equal(requestEvidence({'x-codex-turn-metadata': 'invalid'}, {}).turnMetadataPresent, true);
-  assert.deepEqual(requestEvidence({}, {client_metadata: {'x-codex-turn-metadata': '{"turn_id":"secret"}'}}).turnMetadataIDsPresent, ['turn_id']);
+  assert.equal(requestEvidence({}, {}).headerMetadata.present, false);
+  assert.equal(requestEvidence({'x-codex-turn-metadata': 'invalid'}, {}).headerMetadata.present, true);
+  assert.deepEqual(requestEvidence({}, {client_metadata: {'x-codex-turn-metadata': '{"turn_id":"secret"}'}}).bodyMetadata.idsPresent, ['turn_id']);
 });
 
-test('SSE observations use protocol model declarations, not generated prose', () => {
-  const models = new Set(), terminals = new Set();
-  for (const line of ['data: [DONE]', 'data: invalid',
-    'data: {"type":"response.output_text.delta","delta":"gpt-6-astra"}',
-    'data: {"type":"response.completed","response":{"model":"gpt-5.6-luna"}}'])
-    observeSSELine(line, models, terminals);
-  assert.deepEqual([...models], ['gpt-5.6-luna']);
-  assert.deepEqual([...terminals], ['response.completed']);
+test('header and body metadata are audited independently', () => {
+ const evidence = requestEvidence({'x-codex-turn-metadata':'{"thread_id":"secret-a"}'},
+   {client_metadata:{'x-codex-turn-metadata':'{"session_id":"secret-b"}'}});
+ assert.deepEqual(evidence.headerMetadata.idsPresent,['thread_id']);
+ assert.deepEqual(evidence.bodyMetadata.idsPresent,['session_id']);
+ assert.equal(JSON.stringify(evidence).includes('secret-'),false);
 });
 
 test('pinned Pi native adapter generates no turn metadata and preserves supplied metadata', async () => {
