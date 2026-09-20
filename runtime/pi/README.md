@@ -57,3 +57,21 @@ A temporary owner-bound account using the authorized local OAuth access token, a
 Both upstream responses declared `gpt-5.6-luna` for requested `gpt-6-astra`, so the runner exited 1 with `protocolPassed=true, modelPassed=false`. The temporary account, group and key were deleted after acceptance. The deployed admin OAuth-start endpoint also generated a real Pi authorization URL with PKCE/state. The pending test authorization session was cleared; a new browser login was not completed and no live refresh token was rotated for this test.
 
 The prior gateway image `local/sub2api:pi-aae631525` is retained. Deployment configuration before this update is backed up at `~/docker/sub2api/backups/pi-native-20260920/docker-compose.override.yml.before`; restoring that override and recreating only `sub2api` rolls the gateway back without replacing database contents. The latest repository commit also includes live replay-runner corrections; production runtime/backend source remains `5b2251fa0`.
+
+## Takeover verification on 2026-09-20
+
+The runtime now records `outbound.modelMatchesRequest` at the final SDK HTTP/WS boundary. This is a boolean comparison against the caller's requested model, so it adds no raw credential, identifier, or request content to logs. Local fixture tests exercise both transports.
+
+The live runner now separately asserts outbound model preservation, semantic protocol completion, transport behavior, and response model acceptance. For cached WebSocket turn two, acceptance requires one created connection, connection reuse, delta input, `previous_response_id`, one full-context request, no SSE fallback, and uninterrupted terminal evidence. Merely printing debug counters or receiving final text no longer passes WS acceptance. A response-model failure no longer overwrites the other result flags.
+
+Fresh requests using the authorized local access token reproduced:
+
+| Requested model / route | Final SDK model preserved | Tools and continuation | Response declaration | Model acceptance |
+| --- | --- | --- | --- | --- |
+| `gpt-6-astra` / direct native SSE | yes | passed | `gpt-5.6-luna` | failed |
+| `gpt-6-astra` / direct cached WS | yes | passed; reused connection and delta, no fallback | `gpt-5.6-luna` | failed |
+| `gpt-5.6-luna` / direct native SSE control | yes | passed | `gpt-5.6-luna` | passed |
+
+Both direct paths bypass Sub2API account selection and model mapping. This isolates the reproduced mismatch beyond that gateway boundary; it does not establish the provider's internal model identity or the reason for its declaration. No model alias, response rewrite, or relaxed GPT-6 expectation was introduced. Full GPT-6 acceptance remains blocked on an upstream response declaring the requested model family. Fresh browser login and long-duration token refresh remain unverified; these checks used the existing authorized token.
+
+Validation: 10 runtime/acceptance tests and 12 integration/observer tests passed. Only the runtime needs rebuilding for the new outbound audit; the gateway binary is unchanged.

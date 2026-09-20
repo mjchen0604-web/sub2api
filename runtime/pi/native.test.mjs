@@ -20,6 +20,7 @@ test('native SDK produces its own headers, preserves Responses input, and stream
  assert.equal(outbound.headers.get('originator'),'pi');assert.equal(outbound.headers.has('x-codex-turn-metadata'),false);
  assert.equal(outbound.headers.get('chatgpt-account-id'),'account-a');assert.deepEqual(outbound.body.input,request.input);
  assert.equal(outbound.body.store,false);assert.equal(outbound.body.stream,true);
+ assert.equal(result.outbound.modelMatchesRequest,true);
  assert.notEqual(outbound.body.prompt_cache_key,'s1');
 });
 test('bindings separate users, accounts, models and credentials, but remain stable across refresh',async()=>{
@@ -38,6 +39,7 @@ test('real Pi WS cache reuses connections, sends delta, and isolates credential 
   const first=await runNative({...base,baseUrl:url,transport:'websocket-cached'});assert.equal(first.evidence.terminal_status,'completed');
   const next={...request,input:[...request.input,{role:'user',content:[{type:'input_text',text:'next'}]}]};
   const second=await runNative({...base,request:next,baseUrl:url,transport:'websocket-cached'});
+  assert.equal(first.outbound.modelMatchesRequest,true);assert.equal(second.outbound.modelMatchesRequest,true);
   assert.equal(second.continuation.connectionsReused,1);assert.equal(second.continuation.deltaRequests,1);
   assert.equal(seen[1].previous_response_id,'resp_1');assert.equal(seen[1].input.length,1);
   await runNative({...base,credentialId:6,request:next,baseUrl:url,transport:'websocket-cached'});

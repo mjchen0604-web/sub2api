@@ -31,6 +31,7 @@ class ObservedWebSocket extends WebSocket {
   if(this.owner) {
    const body=JSON.parse(data);
    this.owner.outbound=requestEvidence(this.requestHeaders,body);
+   this.owner.outbound.modelMatchesRequest=body.model===this.owner.requestedModel;
    this.owner.transport='websocket';
   }
   return super.send(data,...args);
@@ -73,7 +74,7 @@ export async function runNative({request,accessToken,accountId,ownerId,credentia
  if(inFlight.has(scoped))throw Error('pi_session_busy');
  inFlight.add(scoped);
  const observer=new ResponseObserver();
- const state={active:true,observer,onBytes,outbound:null,transport:null,pending:Promise.resolve(),deliveryFailed:false,sseEOF:false,transportInterrupted:false};
+ const state={active:true,observer,onBytes,requestedModel:request.model,outbound:null,transport:null,pending:Promise.resolve(),deliveryFailed:false,sseEOF:false,transportInterrupted:false};
  const model={id:request.model,name:request.model,provider:'openai-codex',api:'openai-codex-responses',baseUrl,
   reasoning:true,input:['text','image'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:128000,maxTokens:4096};
  let result;
@@ -86,7 +87,9 @@ export async function runNative({request,accessToken,accountId,ownerId,credentia
       // Native SDK has constructed the headers; inspect only redacted evidence.
       const headers=new Headers(init.headers);
       const body=headers.get('content-encoding')==='zstd'?zstdDecompressSync(init.body,{maxOutputLength:8*1024*1024}).toString():init.body;
-      state.outbound=requestEvidence(headers,JSON.parse(body));
+      const outboundBody=JSON.parse(body);
+      state.outbound=requestEvidence(headers,outboundBody);
+      state.outbound.modelMatchesRequest=outboundBody.model===state.requestedModel;
       state.transport='sse';
       const upstream=await fetchImpl(url,{...init,redirect:'error'});
       onHeaders(upstream.status,upstream.headers);
