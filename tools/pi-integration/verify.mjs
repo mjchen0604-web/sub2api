@@ -4,6 +4,7 @@ import { readFileSync, statSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { stream } from '@earendil-works/pi-ai/api/openai-responses';
+import { modelAcceptance, requestEvidence, observeSSELine } from './acceptance.mjs';
 
 const keyFile = process.env.SUB2API_KEY_FILE;
 if (!keyFile || (statSync(keyFile).mode & 0o077)) throw Error('Set SUB2API_KEY_FILE to a private key file');
@@ -18,19 +19,19 @@ const context={systemPrompt:'You are verifying a tool integration. Follow the us
  {role:'user',content:'Call integration_echo once with value PI_SUB2API_OK. After the tool result, reply with its exact text only.',timestamp:Date.now()}
 ],tools:[{name:'integration_echo',description:'Return the verification value.',parameters:{type:'object',properties:{value:{type:'string'}},required:['value'],additionalProperties:false}}]};
 let requests=0;
+const modelChecks=[];
 async function run(extra={}) {
- const counts={}; let httpStatus=0; let requestedModel;
+ const counts={}; let httpStatus=0; let requestedModel; let ingress;
  const observedModels=new Set();
+ const terminals=new Set();
  let observation=Promise.resolve();
  const observeFetch=async (input,init)=>{
+  ingress=requestEvidence(init?.headers, JSON.parse(init.body));
   const response=await fetch(input,init);
   if(response.ok && response.headers.get('content-type')?.includes('text/event-stream')) {
    observation=response.clone().text().then(wire=>{
     for(const line of wire.split('\n')) {
-     if(!line.startsWith('data:')) continue;
-     try {const event=JSON.parse(line.slice(5)); const value=event.response?.model;
-      if(typeof value==='string' && /^[A-Za-z0-9_.-]{1,80}$/.test(value)) observedModels.add(value);
-     } catch {}
+     observeSSELine(line,observedModels,terminals);
     }
    });
   }
@@ -42,12 +43,12 @@ async function run(extra={}) {
  const result=await response.result();
  await observation;
  // Do not log provider errors or message contents: errors can echo request data.
- console.log(JSON.stringify({request:requests,httpStatus,requestedModel,stopReason:result.stopReason,events:counts,observedModels:[...observedModels]}));
- const expectedModels=process.env.SUB2API_EXPECT_MODELS || (['gpt-6','gpt-6-astra'].includes(model.id) ? 'gpt-6,gpt-6-astra' : '');
- if(expectedModels) {
-  const allowed=expectedModels.split(',');
-  assert.ok(observedModels.size>0 && [...observedModels].every(m=>allowed.includes(m)), 'Actual response model did not match the requested family');
- }
+ const acceptance=modelAcceptance(observedModels,model.id,process.env.SUB2API_EXPECT_MODELS);
+ modelChecks.push(acceptance);
+ console.log(JSON.stringify({request:requests,httpStatus,requestedModel,stopReason:result.stopReason,events:counts,ingress,modelAcceptance:acceptance}));
+ assert.equal(httpStatus,200,'Expected HTTP 200');
+ assert.equal(requestedModel,model.id,'Requested model was changed before sending');
+ assert.deepEqual([...terminals],['response.completed'],'Expected successful SSE terminal event');
  assert.ok(!['error','aborted','pending','length'].includes(result.stopReason),'Pi did not complete successfully');
  return result;
 }
@@ -58,4 +59,6 @@ assert.equal(calls[0].name,'integration_echo');assert.equal(calls[0].arguments.v
 context.messages.push(first,{role:'toolResult',toolCallId:calls[0].id,toolName:calls[0].name,content:[{type:'text',text:'PI_SUB2API_OK'}],isError:false,timestamp:Date.now()});
 const second=await run({toolChoice:'none'});
 assert.equal(second.content.filter(x=>x.type==='text').map(x=>x.text).join('').trim(),'PI_SUB2API_OK');
-console.log(JSON.stringify({result:'PASS',adapter:'@earendil-works/pi-ai@0.85.1',verified:['SSE completion','tool call arguments','tool result continuation','final text'],requests}));
+const modelPassed=modelChecks.every(check=>check.passed);
+console.log(JSON.stringify({result:modelPassed?'PASS':'FAIL',protocolPassed:true,modelPassed,adapter:'@earendil-works/pi-ai@0.85.1',verified:['SSE completion','tool call arguments','tool result continuation','final text'],requests}));
+if(!modelPassed) process.exitCode=1;
